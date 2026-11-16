@@ -3,12 +3,12 @@
 /* ============================================================
    LifeOS — script.js
 
-   1. Утилиты            6. Задачи
-   2. Даты               7. Привычки
-   3. Состояние          8. Календарь
-   4. Помощники UI       9. Дашборд
-   5. Навигация         10. Статистика
-                        11. Запуск
+   1. Утилиты            7. Задачи
+   2. Даты               8. Привычки
+   3. Язык и тема        9. Календарь
+   4. Состояние         10. Дашборд
+   5. Помощники UI      11. Статистика
+   6. Навигация         12. Запуск
 
    Поток данных: действие пользователя -> изменение state -> commit()
    (сохранить в LocalStorage + перерисовать всё). Рендер-функции
@@ -29,14 +29,6 @@ function el(tag, className = "", text) {
 
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const makeId = () => Date.now().toString(36);
-
-// Склонение: 1 день, 2 дня, 5 дней
-function pluralDays(n) {
-  const last = n % 10, lastTwo = n % 100;
-  if (last === 1 && lastTwo !== 11) return "день";
-  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return "дня";
-  return "дней";
-}
 
 // Перезапуск CSS-анимации на уже существующем элементе
 function restartAnimation(node, className) {
@@ -68,7 +60,7 @@ function shiftDays(date, delta) {
 const todayKey = () => dayKey(new Date());
 const monthStart = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const monthIndex = (date) => date.getFullYear() * 12 + date.getMonth();
-const formatDate = (date, options) => date.toLocaleDateString("ru-RU", options);
+const formatDate = (date, options) => date.toLocaleDateString(t("locale"), options);
 
 // Последние N дней, от старого к новому (сегодня — последний)
 function lastDays(count) {
@@ -76,7 +68,135 @@ function lastDays(count) {
   return Array.from({ length: count }, (_, i) => shiftDays(now, i - (count - 1)));
 }
 
-/* ---------- 3. Состояние и хранилище ---------- */
+/* ---------- 3. Язык и тема ---------- */
+// Выбор пользователя хранится отдельно от данных приложения
+const SETTINGS_KEYS = { theme: "lifeos:theme", lang: "lifeos:lang" };
+const THEMES = ["dark", "light"];
+const LANGS = ["ru", "en"];
+
+function readSetting(name, allowed, fallback) {
+  try {
+    const value = localStorage.getItem(SETTINGS_KEYS[name]);
+    return allowed.includes(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSetting(name, value) {
+  settings[name] = value;
+  try {
+    localStorage.setItem(SETTINGS_KEYS[name], value);
+  } catch {
+    /* LocalStorage недоступен — настройка действует до перезагрузки */
+  }
+}
+
+const settings = {
+  theme: readSetting("theme", THEMES, "dark"),
+  lang: readSetting("lang", LANGS, navigator.language?.startsWith("ru") ? "ru" : "en"),
+};
+
+// Словарь переводов. Плейсхолдеры: {name}. Объекты — формы склонения (Intl.PluralRules)
+const I18N = {
+  ru: {
+    locale: "ru-RU",
+    "nav.dashboard": "Главная", "nav.tasks": "Задачи", "nav.calendar": "Календарь",
+    "nav.habits": "Привычки", "nav.stats": "Статистика",
+    "common.add": "Добавить", "common.today": "Сегодня",
+    "tool.theme": "Переключить тему", "tool.lang": "Сменить язык",
+    "dash.total": "Всего задач", "dash.done": "Выполнено", "dash.progress": "Прогресс",
+    "task.placeholder": "Новая задача", "task.name": "Название задачи",
+    "task.empty": "Задач пока нет. Добавьте первую выше.",
+    "task.markDone": "Отметить выполненной", "task.delete": "Удалить задачу",
+    "habit.placeholder": "Новая привычка, например: читать 20 минут", "habit.name": "Название привычки",
+    "habit.empty": "Привычек пока нет. Добавьте первую выше.", "habit.delete": "Удалить привычку",
+    "habit.noStreak": "серия не начата", "habit.inRow": "{days} подряд",
+    "habit.doneToday": "Выполнено сегодня", "habit.markToday": "Отметить сегодня",
+    "cal.prev": "Предыдущий месяц", "cal.next": "Следующий месяц",
+    "cal.eventPlaceholder": "Событие на этот день", "cal.eventName": "Название события",
+    "cal.empty": "На этот день ничего не запланировано.", "event.delete": "Удалить событие",
+    "stats.done": "Задач выполнено из {total}", "stats.percent": "Процент выполнения",
+    "stats.noStreak": "Лучшая серия пока не началась", "stats.bestLabel": "{days} подряд · {name}",
+    "stats.current": " · сейчас {n}", "stats.checkins": "всего отметок: {n}",
+    "stats.week": "Привычки за 7 дней", "stats.weekEmpty": "Добавьте привычки, и здесь появится график.",
+    "stats.top": "Лучшие серии", "stats.topEmpty": "Добавьте привычки, и здесь появится рейтинг серий.",
+    days: { one: "день", few: "дня", many: "дней", other: "дня" },
+    "cal.events": { one: "{n} событие", few: "{n} события", many: "{n} событий", other: "{n} события" },
+  },
+  en: {
+    locale: "en-US",
+    "nav.dashboard": "Dashboard", "nav.tasks": "Tasks", "nav.calendar": "Calendar",
+    "nav.habits": "Habits", "nav.stats": "Statistics",
+    "common.add": "Add", "common.today": "Today",
+    "tool.theme": "Toggle theme", "tool.lang": "Switch language",
+    "dash.total": "Total tasks", "dash.done": "Completed", "dash.progress": "Progress",
+    "task.placeholder": "New task", "task.name": "Task name",
+    "task.empty": "No tasks yet. Add your first one above.",
+    "task.markDone": "Mark as done", "task.delete": "Delete task",
+    "habit.placeholder": "New habit, e.g. read for 20 minutes", "habit.name": "Habit name",
+    "habit.empty": "No habits yet. Add your first one above.", "habit.delete": "Delete habit",
+    "habit.noStreak": "no streak yet", "habit.inRow": "{days} in a row",
+    "habit.doneToday": "Done today", "habit.markToday": "Mark today",
+    "cal.prev": "Previous month", "cal.next": "Next month",
+    "cal.eventPlaceholder": "Event for this day", "cal.eventName": "Event name",
+    "cal.empty": "Nothing planned for this day.", "event.delete": "Delete event",
+    "stats.done": "of {total} tasks completed", "stats.percent": "Completion rate",
+    "stats.noStreak": "No streak yet", "stats.bestLabel": "{days} in a row · {name}",
+    "stats.current": " · current {n}", "stats.checkins": "total check-ins: {n}",
+    "stats.week": "Habits over 7 days", "stats.weekEmpty": "Add habits and the chart will appear here.",
+    "stats.top": "Top streaks", "stats.topEmpty": "Add habits and your streak ranking will appear here.",
+    days: { one: "day", other: "days" },
+    "cal.events": { one: "{n} event", other: "{n} events" },
+  },
+};
+
+// Перевод по ключу; если ключа нет в языке — берём русский, затем сам ключ
+function t(key, params = {}) {
+  const value = I18N[settings.lang][key] ?? I18N.ru[key] ?? key;
+  return typeof value === "string" ? value.replace(/\{(\w+)\}/g, (_, name) => params[name] ?? "") : value;
+}
+
+// Склонение по правилам языка: plural("days", 5) -> "дней" / "days"
+function plural(key, n) {
+  const forms = t(key);
+  const rule = new Intl.PluralRules(t("locale")).select(n);
+  return (forms[rule] ?? forms.other).replace("{n}", n);
+}
+
+const pluralDays = (n) => plural("days", n);
+
+// Атрибут в HTML -> свойство dataset -> что именно переводим
+const I18N_ATTRS = [
+  ["data-i18n", "i18n", (node, text) => (node.textContent = text)],
+  ["data-i18n-placeholder", "i18nPlaceholder", (node, text) => (node.placeholder = text)],
+  ["data-i18n-aria", "i18nAria", (node, text) => node.setAttribute("aria-label", text)],
+  ["data-i18n-title", "i18nTitle", (node, text) => (node.title = text)],
+];
+
+// Переводит статичные тексты из HTML (динамические строит render() через t())
+function applyTranslations() {
+  document.documentElement.lang = settings.lang;
+  for (const [attr, prop, apply] of I18N_ATTRS) {
+    document.querySelectorAll(`[${attr}]`).forEach((node) => apply(node, t(node.dataset[prop])));
+  }
+  $("#lang-label").textContent = settings.lang.toUpperCase();
+}
+
+const applyTheme = () => (document.documentElement.dataset.theme = settings.theme);
+
+$("#theme-toggle").addEventListener("click", () => {
+  writeSetting("theme", settings.theme === "dark" ? "light" : "dark");
+  applyTheme();
+});
+
+$("#lang-toggle").addEventListener("click", () => {
+  writeSetting("lang", settings.lang === "ru" ? "en" : "ru");
+  applyTranslations();
+  render(); // перестраиваем динамические тексты, даты и склонения
+});
+
+/* ---------- 4. Состояние и хранилище ---------- */
 const STORAGE_KEY = "lifeos:v1";
 
 const emptyState = () => ({ tasks: [], habits: [], events: [] });
@@ -122,7 +242,7 @@ function commit() {
   render();
 }
 
-/* ---------- 4. Общие помощники UI ---------- */
+/* ---------- 5. Общие помощники UI ---------- */
 // Рисует список и показывает/прячет подсказку «пусто»
 function renderList(listNode, emptyNode, items, createItem) {
   listNode.replaceChildren(...items.map(createItem));
@@ -159,7 +279,7 @@ function createDeleteButton(label) {
   return btn;
 }
 
-/* ---------- 5. Навигация ---------- */
+/* ---------- 6. Навигация ---------- */
 const navButtons = document.querySelectorAll(".nav-btn");
 const pages = document.querySelectorAll(".page");
 const EXIT_MS = 160; // должно совпадать с длительностью page-out в CSS
@@ -186,7 +306,7 @@ function showPage(name) {
 
 navButtons.forEach((btn) => btn.addEventListener("click", () => showPage(btn.dataset.page)));
 
-/* ---------- 6. Задачи ---------- */
+/* ---------- 7. Задачи ---------- */
 const CHECK_ICON = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
 
 const taskForm = $("#task-form");
@@ -211,11 +331,11 @@ function createTaskElement(task) {
 
   const check = el("button", "check");
   check.dataset.action = "toggle";
-  check.setAttribute("aria-label", "Отметить выполненной");
+  check.setAttribute("aria-label", t("task.markDone"));
   check.setAttribute("aria-pressed", String(task.done));
   check.innerHTML = CHECK_ICON;
 
-  li.append(check, el("span", "task-text", task.text), createDeleteButton("Удалить задачу"));
+  li.append(check, el("span", "task-text", task.text), createDeleteButton(t("task.delete")));
   return li;
 }
 
@@ -235,7 +355,7 @@ function getTaskStats() {
   return { total, done, percent };
 }
 
-/* ---------- 7. Привычки ---------- */
+/* ---------- 8. Привычки ---------- */
 const habitForm = $("#habit-form");
 const habitInput = $("#habit-input");
 const habitList = $("#habit-list");
@@ -290,7 +410,7 @@ function createHabitStreak(streak) {
   const box = el("div", "habit-streak" + (streak ? " active" : ""));
   box.append(
     el("span", "habit-streak-num", streak),
-    el("span", "habit-streak-label", streak ? `${pluralDays(streak)} подряд` : "серия не начата")
+    el("span", "habit-streak-label", streak ? t("habit.inRow", { days: pluralDays(streak) }) : t("habit.noStreak"))
   );
   return box;
 }
@@ -317,9 +437,9 @@ function createHabitElement(habit) {
   card.dataset.id = habit.id;
 
   const head = el("div", "habit-head");
-  head.append(el("span", "habit-name", habit.name), createDeleteButton("Удалить привычку"));
+  head.append(el("span", "habit-name", habit.name), createDeleteButton(t("habit.delete")));
 
-  const btn = el("button", "habit-btn", doneToday ? "Выполнено сегодня" : "Отметить сегодня");
+  const btn = el("button", "habit-btn", doneToday ? t("habit.doneToday") : t("habit.markToday"));
   btn.dataset.action = "toggle";
   btn.setAttribute("aria-pressed", String(doneToday));
 
@@ -335,7 +455,7 @@ bindListActions(habitList, ".habit", {
   delete: (id) => removeItem("habits", id),
 });
 
-/* ---------- 8. Календарь ---------- */
+/* ---------- 9. Календарь ---------- */
 // Выбранный день и месяц — состояние экрана, в LocalStorage не сохраняется
 const calendar = { view: monthStart(new Date()), selected: todayKey() };
 
@@ -380,7 +500,7 @@ function createDayCell(date, count) {
   cell.classList.toggle("selected", key === calendar.selected);
   cell.setAttribute(
     "aria-label",
-    formatDate(date, { day: "numeric", month: "long" }) + (count ? `, событий: ${count}` : "")
+    formatDate(date, { day: "numeric", month: "long" }) + (count ? `, ${plural("cal.events", count)}` : "")
   );
 
   const dots = el("span", "cal-dots"); // до трёх точек-индикаторов
@@ -393,7 +513,7 @@ function createDayCell(date, count) {
 function createEventElement(event) {
   const li = el("li", "event");
   li.dataset.id = event.id;
-  li.append(el("span", "event-text", event.text), createDeleteButton("Удалить событие"));
+  li.append(el("span", "event-text", event.text), createDeleteButton(t("event.delete")));
   return li;
 }
 
@@ -406,7 +526,16 @@ function renderDayPanel() {
   renderList(eventList, eventEmpty, items, createEventElement);
 }
 
+// Заголовок дней недели (Пн… / Mon…) строится по текущему языку
+function renderWeekdays() {
+  const monday = new Date(2024, 0, 1); // 1 января 2024 — понедельник
+  $("#cal-weekdays").replaceChildren(
+    ...Array.from({ length: 7 }, (_, i) => el("span", "", capitalize(formatDate(shiftDays(monday, i), { weekday: "short" }))))
+  );
+}
+
 function renderCalendar(animate = false) {
+  renderWeekdays();
   calTitle.textContent = capitalize(formatDate(calendar.view, { month: "long", year: "numeric" }));
 
   const counts = countEventsByDate();
@@ -453,13 +582,14 @@ calGrid.addEventListener("click", (e) => {
 bindForm(eventForm, eventInput, addEvent);
 bindListActions(eventList, ".event", { delete: (id) => removeItem("events", id) });
 
-/* ---------- 9. Дашборд ---------- */
+/* ---------- 10. Дашборд ---------- */
 function renderDashboard() {
   const { total, done, percent } = getTaskStats();
   $("#m-total").textContent = total;
   $("#m-done").textContent = done;
   $("#m-percent").textContent = percent + "%";
   $("#m-bar").style.width = percent + "%";
+  renderDate();
 }
 
 function renderDate() {
@@ -468,18 +598,18 @@ function renderDate() {
   );
 }
 
-/* ---------- 10. Статистика ---------- */
+/* ---------- 11. Статистика ---------- */
 function renderTaskStats() {
   const { total, done, percent } = getTaskStats();
   $("#s-done").textContent = done;
-  $("#s-done-label").textContent = `Задач выполнено из ${total}`;
+  $("#s-done-label").textContent = t("stats.done", { total });
   $("#s-percent").textContent = percent + "%";
   $("#s-bar").style.width = percent + "%";
 }
 
 function createStreakRow({ name, best, now }, maxBest) {
   const value = el("span", "streak-value", `${best} ${pluralDays(best)}`);
-  value.append(el("small", "", ` · сейчас ${now}`));
+  value.append(el("small", "", t("stats.current", { n: now })));
 
   const head = el("div", "streak-top");
   head.append(el("span", "streak-name", name), value);
@@ -503,7 +633,7 @@ function renderStreakStats() {
 
   $("#s-streak").textContent = top ? top.best : 0;
   $("#s-streak-label").textContent =
-    top && top.best ? `${pluralDays(top.best)} подряд · ${top.name}` : "Лучшая серия пока не началась";
+    top && top.best ? t("stats.bestLabel", { days: pluralDays(top.best), name: top.name }) : t("stats.noStreak");
 
   const maxBest = Math.max(1, top ? top.best : 1); // длина полоски — относительно лидера
   renderList($("#streak-list"), $("#streak-empty"), ranked, (r) => createStreakRow(r, maxBest));
@@ -536,7 +666,7 @@ function renderWeekChart() {
 
   $("#week-chart").replaceChildren(...columns);
   $("#week-empty").hidden = hasHabits;
-  $("#week-summary").textContent = hasHabits ? `всего отметок: ${sum}` : "";
+  $("#week-summary").textContent = hasHabits ? t("stats.checkins", { n: sum }) : "";
 }
 
 function renderStats() {
@@ -545,7 +675,7 @@ function renderStats() {
   renderWeekChart();
 }
 
-/* ---------- 11. Запуск ---------- */
+/* ---------- 12. Запуск ---------- */
 function render() {
   renderTasks();
   renderHabits();
@@ -554,5 +684,6 @@ function render() {
   renderStats();
 }
 
-renderDate();
+applyTheme();
+applyTranslations();
 render();
